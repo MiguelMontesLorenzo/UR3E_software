@@ -1,213 +1,295 @@
-#!/usr/bin/env python3
-import socket
-import os
-import numpy as np
-import shutil
+import time
+import threading
+import sys
+sys.path.append('..')   
+import logging
+import time
+import rtde_config as rtde_config
+import rtde as rtde
+import keyboard
 import math
 
-
-class CommunicationClass:
-    # Class constructor
-    def __init__(self):
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.confirm = 1
-        return
-
-    # Establish the communication
-    def connect2Robot(self):
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Creates a socket object
-        print(self.s)
-        # Start connection
-        self.s.connect((HOST, PORT))
-        # Confirmation message
-        self.s.sendall(b"0;0;0;0;0;0;1;")
-        print(self.s)
-        # Confirmation message from robot
-        data = self.s.recv(1024)
-        print("Received", repr(data))
-        # Check the connection
-        if data != b"Si":
-            print("Connection failed")
-            self.confirm = 1
-        else:
-            print("Connection started")
-            self.confirm = 0
-        print(self.s)
-
-        return self.confirm
-
-    # Send messages
-    def sendMessage(self, message):
-        # Message is a list
-        # print(self.s)
-        str_message = "".join([str(item) + ";" for item in message])
-        # print("Sending to the robot: ", str_message)
-        # print(bytes(str_message, "ascii"))
-        self.s.sendall(bytes(str_message, "ascii"))
-
-    def recvMessage(self):
-        data = self.s.recv(1024)
-        # print("Received", repr(data))
-        data_proc = data.split(b";")
-        data_proc.pop()
-        # print(data_proc)
-        # Check the connection
-        vec = [float(item.decode("UTF-8")) for item in data_proc]
-        # print("Received from the robot:", vec)
-        return vec
+sem = threading.Semaphore(0)
 
 
-# class YoloDetection:
-#     def __init__(self):
-#         # Maximum number of positionsclass YoloDetection:
-#     def __init__(self):
-#         # Maximum number of positions to move the piece in the x axis
-#         self.x_max = 10
-#         # Maximum number of positions to move the piece in the y axis
-#         self.y_max = 5
-#         # Distance (mm) from one potition to the adjacent in one axis
-#         self.step = 15.25
-#         self.x_yolo = 0.8
-#         self.y_yolo = 0.5
-#         self.x_mm = 300
-#         self.y_mm = 200
-#         # Pixeles de imagen que no representan area de trabajo en X
-#         self.x0 = 100
-#         # Pixeles de imagen que no representan area de trabajo en Y
-#         self.y0 = 100
-#         # Camera source
-#         self.source = 0
+### Notas:
+# Cuando se habla de "control effort" se habla de un vector de ángulos a los que se tiene que mover el UR3E
 
-#     def AskForPiecePosition_Yolo(self):
-#         # Checks if exp directory already exists and eliminate it
-#         exp_path = os.path.join(PATH, "./yolov5/runs/detect/exp")
-#         if os.path.isdir(exp_path):
-#             shutil.rmtree(exp_path)
-#         # Executes detect.py
-#         yolo_path = os.path.join(PATH, "yolov5")
-#         os.chdir(yolo_path)
-#         os.system(f"python detect.py --source {self.source} --conf-thres 0.80 --save-txt --save-conf --weights {PATH}\YOLO.pt")
-#         # Reads current.txt to obtain the position vector
-#         txt_path = os.path.join(PATH, "yolov5/runs/detect/exp/labels/current.txt")
-#         f = open(txt_path, "r")
-#         message = f.read()
-#         # Process the txt
-#         dataset = []
-#         temp1 = message.split("\n")
-#         if temp1[-1] == "":
-#             temp1.pop()
-#         # Vec: [object-class-ID, X center, Y center, Box width, Box height, Prob]
-#         for n in range(len(temp1)):
-#             temp2 = temp1[n].split(" ")
-#             vec = []
-#             for m in range(len(temp2)):
-#                 vec.append(float(temp2[m]))
-#             dataset.append(vec)
-#         f.close()
-#         dataset = np.array(dataset)
-#         # Analyses standard deviations and mean values
-#         final_pos = [0, 0, 0, 0, 0, 0, 0]
-#         std_dev_list = np.std(dataset.T[1:5, :], axis=1)
-#         final_pos = np.mean(dataset.T[1:3, :], axis=1)
-#         width_list = np.mean(dataset.T[3:5, :], axis=1)
-#         # Erase the directory that contains the txt
-#         os.chdir(PATH)
-#         exp_path = os.path.join(PATH, "./yolov5/runs/detect/exp")
-#         shutil.rmtree(exp_path)
-#         # Transform from yolo units to mm
-#         final_pos[0] = (final_pos[0] - self.x0) * (self.x_mm / width_list[0])
-#         final_pos[1] = (final_pos[1] - self.y0) * (self.y_mm / width_list[1])
-#         # Another posible option
-#         """
-#         final_pos[0] = (final_pos[0] - x0) * (x_mm / x_yolo)
-#         final_pos[1] = (final_pos[1] - y0) * (y_mm / y_yolo)
-#         """
-#         return final_pos to move the piece in the x axis
-#         self.x_max = 10
-#         # Maximum number of positions to move the piece in the y axis
-#         self.y_max = 5
-#         # Distance (mm) from one potition to the adjacent in one axis
-#         self.step = 15.25
-#         self.x_yolo = 0.8
-#         self.y_yolo = 0.5
-#         self.x_mm = 300
-#         self.y_mm = 200
-#         # Pixeles de imagen que no representan area de trabajo en X
-#         self.x0 = 100
-#         # Pixeles de imagen que no representan area de trabajo en Y
-#         self.y0 = 100
-#         # Camera source
-#         self.source = 0
+class UR3EConnection:
 
-#     def AskForPiecePosition_Yolo(self):
-#         # Checks if exp directory already exists and eliminate it
-#         exp_path = os.path.join(PATH, "./yolov5/runs/detect/exp")
-#         if os.path.isdir(exp_path):
-#             shutil.rmtree(exp_path)
-#         # Executes detect.py
-#         yolo_path = os.path.join(PATH, "yolov5")
-#         os.chdir(yolo_path)
-#         os.system(f"python detect.py --source {self.source} --conf-thres 0.80 --save-txt --save-conf --weights {PATH}\YOLO.pt")
-#         # Reads current.txt to obtain the position vector
-#         txt_path = os.path.join(PATH, "yolov5/runs/detect/exp/labels/current.txt")
-#         f = open(txt_path, "r")
-#         message = f.read()
-#         # Process the txt
-#         dataset = []
-#         temp1 = message.split("\n")
-#         if temp1[-1] == "":
-#             temp1.pop()
-#         # Vec: [object-class-ID, X center, Y center, Box width, Box height, Prob]
-#         for n in range(len(temp1)):
-#             temp2 = temp1[n].split(" ")
-#             vec = []
-#             for m in range(len(temp2)):
-#                 vec.append(float(temp2[m]))
-#             dataset.append(vec)
-#         f.close()
-#         dataset = np.array(dataset)
-#         # Analyses standard deviations and mean values
-#         final_pos = [0, 0, 0, 0, 0, 0, 0]
-#         std_dev_list = np.std(dataset.T[1:5, :], axis=1)
-#         final_pos = np.mean(dataset.T[1:3, :], axis=1)
-#         width_list = np.mean(dataset.T[3:5, :], axis=1)
-#         # Erase the directory that contains the txt
-#         os.chdir(PATH)
-#         exp_path = os.path.join(PATH, "./yolov5/runs/detect/exp")
-#         shutil.rmtree(exp_path)
-#         # Transform from yolo units to mm
-#         final_pos[0] = (final_pos[0] - self.x0) * (self.x_mm / width_list[0])
-#         final_pos[1] = (final_pos[1] - self.y0) * (self.y_mm / width_list[1])
-#         # Another posible option
-#         """
-#         final_pos[0] = (final_pos[0] - x0) * (x_mm / x_yolo)
-#         final_pos[1] = (final_pos[1] - y0) * (y_mm / y_yolo)
-#         """
-#         return final_pos
+	def __init__(self):
+
+    	# execution mode: (-1: stop; 0: not communicating; 1: angle control; 2: position control)
+		self.MODE = 0
+		# due to the choice of continuous speed control instead of the default UR3E movement control it is necesary to keep constant comunication in parallel
+		self.t = threading.Thread(target=self.monitor)
+		
+
+		# info required for connection
+		self.ROBOT_HOST = '10.0.0.150' # ip in settings in the tablet
+		self.ROBOT_PORT = 30004
+		# communication config file path
+		self.config_filename = './examples/control_loop_configuration.xml'
+		
+		# communication object reference
+		self.con = None
+		# direct multiplier of robot movement speed
+		self.gain = 1
+		# object containing information to be send in each moment
+		self.setp = None
+		# 
+		self.watchdog = None
+
+		# robot actual joint angles and targeted angles to move towards
+		self.angles = None
+		self.target_ang = None
+		# robot actual joint positions (3D vectors) and targeted positions to move towards (only for position control)
+		self.position = None
+		self.target_pos = None
+
+		# precision error in reaching targeted values
+		self.check = 0
+		self.error = 0.01
+
+	def monitor(self):
+
+		print("monitoring...")
+		# Check the connection is open
+		if not self.con.send_start():
+			print("Error conenction")
+			sys.exit()
+
+		# 
+		init_time = time.time()
+		while self.MODE != -1:
+
+			state = self.con.receive()
+			if state is None:
+				break
+			joint_angles = state.actual_q
+			position = state.actual_TCP_pose
+
+			# Check if the program is running in the Polyscope
+			if state.output_int_register_0 != 0:
+
+				if self.MODE == 1:
+
+					# Get UR3 position
+					self.angles = state.actual_q
+					self.position = state.actual_TCP_pose
+					
+					# Compute control error    
+					error = self.compute_error(self.target_ang, state.actual_q)
+					# Compute control effort
+					control_effort = self.compute_control_effort(error, self.gain)
+					# Reformat control effort list into setpoint
+					control_effort.append(self.MODE)
+					self.list_to_setp(self.setp, control_effort)
+					# Send new control effort
+					self.con.send(self.setp)
+					self.check = self.check_dif(self.target_ang,self.angles)
+					if self.check == 1:
+						self.MODE = 0
+					
+
+				if self.MODE == 2:
+
+					# Get UR3 position
+					self.angles = state.actual_q
+					self.position = state.actual_TCP_pose
+
+					self.target_pos.append(self.MODE)
+					self.list_to_setp(self.setp,self.target_pos) #control_effort
+					# Send new control effort        
+					self.con.send(self.setp)
+
+					self.check = self.check_dif(self.target_pos,self.position)
+					if self.check == 1:
+						self.MODE = 0
+
+
+				if self.MODE == 0:
+					self.angles = state.actual_q
+					self.position = state.actual_TCP_pose
+					self.list_to_setp(self.setp, [0,0,0,0,0,0,0])
+					self.con.send(self.setp)
+					self.acquire()
+
+
+			self.con.send(self.watchdog)
+				
+	def compute_error(self, target_angles, joints):
+
+		"""Computes a 6D vector containing the error in every joint in the control loop
+
+		Args:
+			target (list): List of floats containing the target joint angles in radians
+			joints (list): List of floats containing the measured joint angles in radians
+
+		Returns:
+			list: List of floats containing the angles error in radians
+		"""
+		return [target_angle - joints[i] for i,target_angle in enumerate(target_angles)]
+
+	def compute_control_effort(self, error, gain):
+
+		"""Computes a 6D vector containing the control effort in every joint in the control loop
+
+		Args:
+			error (list): List of floats containing the angles error in radians
+			gain (float): Gain in the control loop (each joint angle error will be multiplied times this value to compute control effort)
+
+		Returns:
+			liat: List of floats containing the control efforts in each joint
+		"""
+		return [i*gain for i in error]
+
+	def list_to_degrees(self, angles):
+
+		### Transforma una lista de valores de radianes a grados
+
+		"""Converts input list values from radians to degrees
+
+		Args:
+			angles (list): List containing angles in radians
+
+		Returns:
+			list: List containing angles in degrees
+		"""
+		return [i*360/(2*math.pi) for i in angles]
+
+	def list_to_radians(self, angles):
+		"""Converts input list values from degrees to radians
+
+		Args:
+			angles (list): List containing angles in degrees
+
+		Returns:
+			list: List containing angles in radians
+		"""
+		return [i*(2*3.14592)/(360) for i in angles]
+
+	# Reformat setpoint into list
+	def setp_to_list(self, setp):
+		return [setp.__dict__['input_double_register_%i' % i] for i in range(0,7)]
+
+	# Reformat list into setpoint
+	def list_to_setp(self, setp, lst):
+		for i in range(0,7):
+			setp.__dict__["input_double_register_%i" % i] = lst[i]
+		return setp
+
+	def connect2Robot(self):
+
+		# logging.getLogger().setLevel(logging.INFO)
+
+		# configuration files
+		conf = rtde_config.ConfigFile(self.config_filename)
+		state_names, state_types = conf.get_recipe('state')
+		setp_names, setp_types = conf.get_recipe('setp')
+		watchdog_names, watchdog_types = conf.get_recipe('watchdog')
+
+		### self.con.connect() se encarga de crear la conexión con el UR3E
+		### Además si la conexión ya existe, entonces se devuelve un 0, si la conexión no existe todavía no se devuelve nada (None)
+
+		### En el siguiente fragmento se llama 2 veces al método self.con.connect():
+		### 1 - para crear la conexión
+		### 2 - para recibir un (0) y verificar que la conexión ha sido creada
+
+		# connection to the robot
+		self.con = rtde.RTDE(self.ROBOT_HOST, self.ROBOT_PORT)
+		self.con.connect()  ###?
+		connection_state = self.con.connect()  ### esto devuelve 0 si la conexion está activa
+
+		# check connection
+		### Repetición del bucle hasta el momento en el que se lleva a cabo la conexión satisfactoriamente
+		while connection_state != 0:
+			time.sleep(5)
+			connection_state = self.con.connect()
+
+		self.con.send_output_setup(state_names, state_types)
+		self.setp = self.con.send_input_setup(setp_names, setp_types)
+		self.watchdog = self.con.send_input_setup(watchdog_names, watchdog_types)
+
+		# Initialize 6 registers which will hold the target angle values
+		self.setp.input_double_register_0 = 0.0
+		self.setp.input_double_register_1 = 0.0
+		self.setp.input_double_register_2 = 0.0
+		self.setp.input_double_register_3 = 0.0
+		self.setp.input_double_register_4 = 0.0
+		self.setp.input_double_register_5 = 0.0
+		self.setp.input_double_register_6 = 0.0
+		  
+		# The function "rtde_set_watchdog" in the "rtde_control_loop.urp" creates a 1 Hz watchdog
+		self.watchdog.input_int_register_0 = 0
+		print("connected")
+		self.t.start()
+		return 0
+
+	def change_mode(self, n):
+		self.MODE = n
+		return 0
+
+	def check_dif(self, targ, actual):
+		ch = 0
+		for i in range(len(actual)):
+			if (targ[i]-actual[i]) < self.error :
+				ch = 1
+			else :
+				ch = 0
+				break
+		return ch
+
+	def go_pos(self, position):
+		self.check  = 0
+		self.target_pos = position
+		self.MODE = 2
+		sem.release()
+
+	def go_ang(self, angles):
+		self.check  = 0
+		self.target_ang = angles
+		self.MODE = 1
+		sem.release()
+
+	def get_ang(self):
+		return self.angles
+
+	def get_pos(self):
+		return self.position
+
+	def stop(self):
+		self.MODE = -1
+		self.t.join()
+		self.list_to_setp(self.setp, [0,0,0,0,0,0,0])
+		self.con.send(self.setp)
+		self.con.disconnect()
+		return 0
+
+
+
+
 
 
 class RobotOrders:
+
     def __init__(self):
-        # Initialize the message vector and the order index
-        self.message = [0, 0, 0, 0, 0, 0, 0]
-        self.order = 0
+
+        # Initialize the message vector and the control mode
+        self.control_info = [0, 0, 0, 0, 0, 0, 0]
+
         # Set the communication
-        self.Communication = CommunicationClass()
+        self.Communication = UR3EConnection()
         self.confirmation = self.Communication.connect2Robot()
+        # self.confirmation = self.Communication.go_ang([0,0,0,0,0,0])
         return
 
-    def moveCoords(self, coordinates):
+    def moveCoords(self, coordinates):  
         # Coordinates in mm
-        # Fill in the last position of the message with the order index
-        self.order = 0
-        self.message[-1] = self.order
-        # Move Coords
-        # print("Moving robot position according to coordinates")
-        self.message[0:3] = coordinates[:]
-        # Send the message
-        self.Communication.sendMessage(self.message)
+        # !!! coordinates must be 6x3 array
+        self.Communication.go_pos(coordinates)
         # Recive the new robot coordinates
-        recived_pose = self.Communication.recvMessage()
+        recived_pose = self.Communication.get_pos()
         # Check if the robot pose is within the tolerance range
         if recived_pose <= coordinates + 1 or recived_pose >= coordinates - 1:
             # Pose okey
@@ -217,33 +299,13 @@ class RobotOrders:
             check = 0
         return check
 
-    # def moveFromYolo(self):
-    #     Yolo = YoloDetection()
-    #     self.message = Yolo.AskForPiecePosition_Yolo()
-    #     # Fill in the last position of the message with the order index
-    #     self.order = 0
-    #     self.message[-1] = self.order
-    #     # Send the message
-    #     self.Communication.sendMessage(self.message)
-    #     # Recive the relative robot position
-    #     rel_position = self.Communication.recvMessage()
-    #     return rel_position
-
     def moveJoints(self, angles):
-        # Degrees in radians
-        # Fill in the last position of the message with the order index
-        self.order = 1
-        self.message[-1] = self.order
-        # Move joints
-        # print("Moving robot joints (degrees)")
-        # angles_deg = [round(math.degrees(angles[i])) for i in range(len(angles))]
-        self.message[0:6] = angles
-        # Send the message
-        self.Communication.sendMessage(self.message)
+    	# send the order
+        self.Communication.go_ang(angles)
         # Recive the new orientation
-        joint_values = self.Communication.recvMessage()
-        jv_high = [item + 0.5 for item in self.message]
-        jv_low = [item - 0.5 for item in self.message]
+        joint_values = self.Communication.get_ang()
+        jv_high = [item + 0.5 for item in angles]
+        jv_low = [item - 0.5 for item in angles]
         # Comprobation of joints
         if joint_values > jv_low and joint_values < jv_high:
             # Joints' orientation okey
@@ -254,72 +316,7 @@ class RobotOrders:
         return check
 
     def ask4RobotJoints(self):
-        # Fill in the last position of the message with the order index
-        self.order = 2
-        self.message[-1] = self.order
-        # Send the message
-        self.Communication.sendMessage(self.message)
-        # Recive the joints' orientation
-        joint_values = self.Communication.recvMessage()
-        return joint_values
+        return self.Communication.get_ang()
 
     def ask4AbsPosition(self):
-        # Fill in the last position of the message with the order index
-        self.order = 3
-        self.message[-1] = self.order
-        # Send the message
-        self.Communication.sendMessage(self.message)
-        # Recive the joints' orientation
-        abs_position = self.Communication.recvMessage()
-        return abs_position
-
-    # def ask4RelativePosition(self):
-    #     # Ask for relative position to top left corner of YOLO img
-    #     # Fill in the last position of the def moveFromYolo(self):
-    #     Yolo = YoloDetection()
-    #     self.message = Yolo.AskForPiecePosition_Yolo()
-    #     # Fill in the last position of the message with the order index
-    #     self.order = 4
-    #     self.message[-1] = self.order
-    #     # Send the message
-    #     self.Communication.sendMessage(self.message)
-    #     # Recive the relative robot position
-    #     rel_position = self.Communication.recvMessage()
-    #     return rel_position
-
-    # def pickPlace_target(self, old_position, new_position):
-    #     # Fill in the last position of the message with the order index
-    #     self.order = 1
-    #     self.message[-1] = self.order
-    #     # Move Coords
-    #     # print("Moving robot position to old target position")
-    #     self.message[0:3] = old_position[:]
-    #     # Send the message with the old target position
-    #     self.Communication.sendMessage(self.message)
-    #     # Recive the new robot coordinates
-    #     _ = self.Communication.recvMessage()
-    #     # Pick the piece
-    #     self.order = 5
-    #     self.message[-1] = self.order
-    #     # print("Picking the piece")
-    #     self.Communication.sendMessage(self.message)
-    #     # Recive the confirmation
-    #     _ = self.Communication.recvMessage()
-    #     # Place the target in the new position
-    #     self.order = 0
-    #     self.message[-1] = self.order
-    #     # Move Coords
-    #     # print("Moving robot position to new target position")
-    #     self.message[0:3] = new_position[:]
-    #     # Send the message with the new target position
-    #     self.Communication.sendMessage(self.message)
-    #     # Recive the new robot coordinates
-    #     _ = self.Communication.recvMessage()
-    #     # Place the piece
-    #     self.order = 6
-    #     self.message[-1] = self.order
-    #     # print("Placing the piece")
-    #     self.Communication.sendMessage(self.message)
-    #     # Recive the confirmation
-    #     _ = self.Communication.recvMessage()
-    #     return
+        return self.Communication.get_pos()
