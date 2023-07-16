@@ -1,19 +1,23 @@
-import time
 import threading
 import sys
-sys.path.append('..')   
-import logging
+import os 
+
 import time
-import rtde_config as rtde_config
-import rtde as rtde
-import keyboard
 import math
+import numpy as np
+# import rtde_config as rtde_config
+# import rtde as rtde
+from libs import rtde_config as rtde_config
+from libs import rtde as rtde
 
-sem = threading.Semaphore(0)
 
+# GLOBAL VARIABLES
+t0 = time.time()
+dir_path = os.path.dirname(os.path.abspath(__file__))
+mode_bloq = threading.Semaphore(0)
+finished_movement_confirmation = threading.Semaphore(0)
+mutex = threading.Semaphore(1)
 
-### Notas:
-# Cuando se habla de "control effort" se habla de un vector de ángulos a los que se tiene que mover el UR3E
 
 class UR3EConnection:
 
@@ -28,17 +32,21 @@ class UR3EConnection:
 		# info required for connection
 		self.ROBOT_HOST = '10.0.0.150' # ip in settings in the tablet
 		self.ROBOT_PORT = 30004
+
 		# communication config file path
-		self.config_filename = './examples/control_loop_configuration.xml'
+		aux_directory_name = 'libs'
+		self.config_filename = dir_path + f'/{aux_directory_name}/control_loop_configuration.xml'
 		
 		# communication object reference
 		self.con = None
 		# direct multiplier of robot movement speed
-		self.gain = 1
+		self.gain = 0.6
 		# object containing information to be send in each moment
 		self.setp = None
 		# 
 		self.watchdog = None
+		# boolean indicating full control over the robot (once it has concluded the initial recolocation)
+		self.monitoring = False
 
 		# robot actual joint angles and targeted angles to move towards
 		self.angles = None
@@ -51,13 +59,17 @@ class UR3EConnection:
 		self.check = 0
 		self.error = 0.01
 
+		# not currently in use (do not remove, can be useful in the future)
+		self.unbloq = threading.Thread(target=self.automatic_unbloq)
+
 	def monitor(self):
 
-		print("monitoring...")
 		# Check the connection is open
 		if not self.con.send_start():
-			print("Error conenction")
+			print("connection failed")
 			sys.exit()
+		else:
+			print("connected")
 
 		# 
 		init_time = time.time()
@@ -70,7 +82,16 @@ class UR3EConnection:
 			position = state.actual_TCP_pose
 
 			# Check if the program is running in the Polyscope
-			if state.output_int_register_0 != 0:
+			if not state.output_int_register_0 == 0:
+
+				if self.MODE == 0:
+					self.angles = state.actual_q
+					self.position = state.actual_TCP_pose
+					self.list_to_setp(self.setp, [0,0,0,0,0,0,0])
+					self.con.send(self.setp)
+					finished_movement_confirmation.release()
+					mode_bloq.acquire()
+
 
 				if self.MODE == 1:
 
@@ -79,9 +100,9 @@ class UR3EConnection:
 					self.position = state.actual_TCP_pose
 					
 					# Compute control error    
-					error = self.compute_error(self.target_ang, state.actual_q)
+					speeds = self.compute_speed(self.target_ang, state.actual_q)
 					# Compute control effort
-					control_effort = self.compute_control_effort(error, self.gain)
+					control_effort = self.compute_control_effort(speeds, self.gain)
 					# Reformat control effort list into setpoint
 					control_effort.append(self.MODE)
 					self.list_to_setp(self.setp, control_effort)
@@ -108,17 +129,10 @@ class UR3EConnection:
 						self.MODE = 0
 
 
-				if self.MODE == 0:
-					self.angles = state.actual_q
-					self.position = state.actual_TCP_pose
-					self.list_to_setp(self.setp, [0,0,0,0,0,0,0])
-					self.con.send(self.setp)
-					self.acquire()
-
 
 			self.con.send(self.watchdog)
 				
-	def compute_error(self, target_angles, joints):
+	def compute_speed(self, target_angles, joints):
 
 		"""Computes a 6D vector containing the error in every joint in the control loop
 
@@ -129,7 +143,17 @@ class UR3EConnection:
 		Returns:
 			list: List of floats containing the angles error in radians
 		"""
-		return [target_angle - joints[i] for i,target_angle in enumerate(target_angles)]
+		# return [target_angle - joints[i] for i,target_angle in enumerate(target_angles)]
+
+		exp = 3/5
+
+		diffs = [0 for _ in range(6)]
+		speeds = [0 for _ in range(6)]
+		for i,_ in enumerate(speeds):
+			diffs[i] = np.round(target_angles[i] - joints[i], 2)
+			speeds[i] = np.round((2*np.heaviside(diffs[i],0)-1) * ((abs(diffs[i])/(2*math.pi))**exp ) * (2*math.pi), 2)
+
+		return speeds
 
 	def compute_control_effort(self, error, gain):
 
@@ -219,12 +243,26 @@ class UR3EConnection:
 		self.setp.input_double_register_4 = 0.0
 		self.setp.input_double_register_5 = 0.0
 		self.setp.input_double_register_6 = 0.0
+		self.setp.input_double_register_7 = 0.0			# control movimiento
+		self.setp.input_double_register_8 = 0.0			# control movimiento
+		self.setp.input_double_register_9 = 0.0			# control movimiento
+		self.setp.input_double_register_10 = 0.0		# control movimiento
+		self.setp.input_double_register_11 = 0.0		# control movimiento
 		  
 		# The function "rtde_set_watchdog" in the "rtde_control_loop.urp" creates a 1 Hz watchdog
 		self.watchdog.input_int_register_0 = 0
-		print("connected")
+
+		mutex.acquire()
 		self.t.start()
+		# self.unbloq.start()
+		finished_movement_confirmation.acquire()
+		mutex.release()
+		self.monitoring = True
+		print('robot ready')
+		print('monitoring ...')
+
 		return 0
+
 
 	def change_mode(self, n):
 		self.MODE = n
@@ -233,7 +271,7 @@ class UR3EConnection:
 	def check_dif(self, targ, actual):
 		ch = 0
 		for i in range(len(actual)):
-			if (targ[i]-actual[i]) < self.error :
+			if abs(targ[i]-actual[i])/(2*math.pi) < self.error :
 				ch = 1
 			else :
 				ch = 0
@@ -242,15 +280,21 @@ class UR3EConnection:
 
 	def go_pos(self, position):
 		self.check  = 0
+		mutex.acquire()
 		self.target_pos = position
 		self.MODE = 2
-		sem.release()
+		mode_bloq.release()
+		finished_movement_confirmation.acquire()
+		mutex.release()
 
 	def go_ang(self, angles):
 		self.check  = 0
+		mutex.acquire()
 		self.target_ang = angles
 		self.MODE = 1
-		sem.release()
+		mode_bloq.release()
+		finished_movement_confirmation.acquire()
+		mutex.release()
 
 	def get_ang(self):
 		return self.angles
@@ -261,10 +305,23 @@ class UR3EConnection:
 	def stop(self):
 		self.MODE = -1
 		self.t.join()
+		# self.unbloq.join()
 		self.list_to_setp(self.setp, [0,0,0,0,0,0,0])
 		self.con.send(self.setp)
 		self.con.disconnect()
 		return 0
+
+
+	def automatic_unbloq(self):
+
+		period = 5
+
+		while not self.MODE == -1:
+			time.sleep(period)
+			mutex.acquire()
+			mode_bloq.release()
+			finished_movement_confirmation.acquire()
+			mutex.release()
 
 
 
@@ -300,19 +357,22 @@ class RobotOrders:
         return check
 
     def moveJoints(self, angles):
-    	# send the order
+			
+		# send the order
         self.Communication.go_ang(angles)
         # Recive the new orientation
         joint_values = self.Communication.get_ang()
         jv_high = [item + 0.5 for item in angles]
         jv_low = [item - 0.5 for item in angles]
+
         # Comprobation of joints
         if joint_values > jv_low and joint_values < jv_high:
-            # Joints' orientation okey
+        # Joints' orientation okey
             check = 1
         else:
-            # Wrong joints' orientation
+        	# Wrong joints' orientation
             check = 0
+
         return check
 
     def ask4RobotJoints(self):
@@ -320,3 +380,8 @@ class RobotOrders:
 
     def ask4AbsPosition(self):
         return self.Communication.get_pos()
+    
+
+# NOTAS:
+# se inicializa la clase cuando se pide la confirmación
+# El rango de movimiento permitido por el brazo robótico es de (-2*pi, 2*pi) (al menos para la articulación de la base)
