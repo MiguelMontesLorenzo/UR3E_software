@@ -8,7 +8,7 @@ import sys
 
 p0 = np.array([0, -math.pi/2, 0, -math.pi/2, 0, 0])
 p1 = np.array([math.pi/2, -math.pi/2, 0, -math.pi/2, 0, 0])
-p2 = np.array([math.pi, -math.pi, 0, -math.pi/2, 0, 0])
+p2 = np.array([math.pi, -math.pi/2, 0, -math.pi/2, 0, 0])
 
 
 
@@ -41,14 +41,16 @@ if __name__ == '__main__':
 
 
     # TEST INACTIVITY TOLERANCE:
-    # for i in range(4):
-    #     print(f'delay of: {10*i} seconds')
-    #     time.sleep(10*i)
-    #     check = robot_control.moveJoints(p1)
+    for i in range(4):
+        print(f'delay of: {10*i} seconds')
+        time.sleep(10*i)
+        check = robot_control.moveJoints(p2)
+        print('movement completed')
 
-    #     print(f'delay of: {10*i + 5} seconds')
-    #     time.sleep(10*i + 5)
-    #     check = robot_control.moveJoints(p0)
+        print(f'delay of: {10*i + 5} seconds')
+        time.sleep(10*i + 5)
+        check = robot_control.moveJoints(p0)
+        print('movement completed')
 
 
 
