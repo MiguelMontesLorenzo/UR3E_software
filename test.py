@@ -15,13 +15,11 @@ p2 = np.array([math.pi, -math.pi/2, 0, -math.pi/2, 0, 0])
 
 if __name__ == '__main__':
     
+    input('wait for polyscope entry point ... then press enter')
 
     # initialize control class
     robot_control = UR3E.RobotOrders()
-    # robot_control = UR3E_inactivity_tolerance()
-
-
-    input('wait for polyscope entry point ... then press enter')
+    # robot_control = UR3E_inactivity_tolerance.RobotOrders()
 
 
     # movement initial timestamp

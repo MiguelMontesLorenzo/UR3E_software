@@ -23,8 +23,6 @@
 
 import xml.etree.ElementTree as ET
 
-import os
-
 
 class Recipe(object):
     __slots__=['key', 'names', 'types']
