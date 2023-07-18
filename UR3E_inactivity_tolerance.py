@@ -257,9 +257,7 @@ class UR3EConnection:
 
         mutex.acquire()
         self.t.start()
-        print('hola')
         finished_movement_confirmation.acquire()
-        print('adios')
         mutex.release()
         self.monitoring = True
         print('robot ready')
