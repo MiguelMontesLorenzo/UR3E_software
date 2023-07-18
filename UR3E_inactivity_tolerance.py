@@ -59,9 +59,6 @@ class UR3EConnection:
 		self.check = 0
 		self.error = 0.01
 
-		# not currently in use (do not remove, can be useful in the future)
-		self.unbloq = threading.Thread(target=self.automatic_unbloq)
-
 	def monitor(self):
 
 		# Check the connection is open
@@ -91,12 +88,12 @@ class UR3EConnection:
 					self.con.send(self.setp)
 					# finished_movement_confirmation.release()
 					# mode_bloq.acquire()
-					if not mutex.acquire(blocking=False):
-						if not finished_movement_confirmation.acquire(blocking=False):
+					if not mutex._value == 0:
+					# if not mutex.locked():
+						if not finished_movement_confirmation._value = 0:
 							if not mode_bloq.acquire(blocking=False):
 								finished_movement_confirmation.release()
-							else:
-								mode_bloq.acquire()
+
 
 
 				if self.MODE == 1:
@@ -260,7 +257,6 @@ class UR3EConnection:
 
 		mutex.acquire()
 		self.t.start()
-		# self.unbloq.start()
 		finished_movement_confirmation.acquire()
 		mutex.release()
 		self.monitoring = True
@@ -289,7 +285,6 @@ class UR3EConnection:
 		mutex.acquire()
 		self.target_pos = position
 		self.MODE = 2
-		# mode_bloq.release()
 		finished_movement_confirmation.acquire()
 		mutex.release()
 
@@ -317,23 +312,11 @@ class UR3EConnection:
 	def stop(self):
 		self.MODE = -1
 		self.t.join()
-		# self.unbloq.join()
 		self.list_to_setp(self.setp, [0,0,0,0,0,0,0])
 		self.con.send(self.setp)
 		self.con.disconnect()
 		return 0
 
-
-	def automatic_unbloq(self):
-
-		period = 5
-
-		while not self.MODE == -1:
-			time.sleep(period)
-			mutex.acquire()
-			mode_bloq.release()
-			finished_movement_confirmation.acquire()
-			mutex.release()
 
 
 

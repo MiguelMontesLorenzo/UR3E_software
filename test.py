@@ -1,4 +1,5 @@
 import UR3E
+# import UR3E_inactivity_tolerance
 import time
 import math
 import numpy as np
@@ -17,6 +18,8 @@ if __name__ == '__main__':
 
     # initialize control class
     robot_control = UR3E.RobotOrders()
+    # robot_control = UR3E_inactivity_tolerance()
+
 
     input('wait for polyscope entry point ... then press enter')
 
@@ -41,16 +44,16 @@ if __name__ == '__main__':
 
 
     # TEST INACTIVITY TOLERANCE:
-    for i in range(4):
-        print(f'delay of: {10*i} seconds')
-        time.sleep(10*i)
-        check = robot_control.moveJoints(p2)
-        print('movement completed')
+    # for i in range(4):
+    #     print(f'delay of: {10*i} seconds')
+    #     time.sleep(10*i)
+    #     check = robot_control.moveJoints(p2)
+    #     print('movement completed')
 
-        print(f'delay of: {10*i + 5} seconds')
-        time.sleep(10*i + 5)
-        check = robot_control.moveJoints(p0)
-        print('movement completed')
+    #     print(f'delay of: {10*i + 5} seconds')
+    #     time.sleep(10*i + 5)
+    #     check = robot_control.moveJoints(p0)
+    #     print('movement completed')
 
 
 
